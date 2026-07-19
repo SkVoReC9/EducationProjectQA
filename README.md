@@ -1,4 +1,8 @@
-# Store API Simulator
+# EducationProjectQA
+
+Project for training Auto QA skills with API (REST + gRPC), Database, UI, Queues.
+
+## Store API Simulator
 
 gRPC store backend with a JSON HTTP gateway. In-memory catalog, cart, and order services for local development and API testing.
 
