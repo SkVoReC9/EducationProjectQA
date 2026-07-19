@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package store.cart.v1;
+
+option go_package = "store/api/cart/v1;cart";
+
+import "google/api/annotations.proto";
+
+service CartService {
+  // Добавить товар в корзину
+  rpc AddItem (AddItemRequest) returns (CartResponse) {
+    option (google.api.http) = {
+      post: "/v1/users/{user_id}/cart/items"
+      body: "*"
+    };
+  }
+  // Удалить товар из корзины (или уменьшить количество)
+  rpc RemoveItem (RemoveItemRequest) returns (CartResponse) {
+    option (google.api.http) = {
+      delete: "/v1/users/{user_id}/cart/items/{product_id}"
+    };
+  }
+  // Получить текущее состояние корзины
+  rpc GetCart (GetCartRequest) returns (CartResponse) {
+    option (google.api.http) = {
+      get: "/v1/users/{user_id}/cart"
+    };
+  }
+  // Очистить корзину полностью
+  rpc ClearCart (ClearCartRequest) returns (CartResponse) {
+    option (google.api.http) = {
+      delete: "/v1/users/{user_id}/cart"
+    };
+  }
+}
+
+message CartItem {
+  string product_id = 1;
+  int32 quantity = 2;
+}
+
+message AddItemRequest {
+  string user_id = 1;
+  string product_id = 2;
+  int32 quantity = 3;
+}
+
+message RemoveItemRequest {
+  string user_id = 1;
+  string product_id = 2;
+}
+
+message GetCartRequest {
+  string user_id = 1;
+}
+
+message ClearCartRequest {
+  string user_id = 1;
+}
+
+// Единый ответ для изменения состояния корзины
+message CartResponse {
+  repeated CartItem items = 1;
+  int64 total_price_cents = 2; // Пересчитанная общая стоимость
+}

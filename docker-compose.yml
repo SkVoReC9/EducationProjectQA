@@ -1,0 +1,7 @@
+services:
+  store:
+    build: .
+    ports:
+      - "50051:50051" # gRPC
+      - "8080:8080"   # HTTP JSON gateway
+    restart: unless-stopped

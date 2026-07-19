@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+// Указываем пакет для логического разделения
+package store.catalog.v1;
+
+// Опция для генерации кода на Go
+option go_package = "store/api/catalog/v1;catalog";
+
+import "google/api/annotations.proto";
+
+service CatalogService {
+  // Получить конкретный товар
+  rpc GetProduct (GetProductRequest) returns (ProductResponse) {
+    option (google.api.http) = {
+      get: "/v1/products/{product_id}"
+    };
+  }
+  // Получить список товаров (с заделом на пагинацию)
+  rpc ListProducts (ListProductsRequest) returns (ListProductsResponse) {
+    option (google.api.http) = {
+      get: "/v1/products"
+    };
+  }
+}
+
+// Основная модель товара
+message Product {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  int64 price_cents = 4; // Цена в минимальных единицах
+  int32 stock_quantity = 5; // Остаток на складе
+}
+
+message GetProductRequest {
+  string product_id = 1;
+}
+
+message ProductResponse {
+  Product product = 1;
+}
+
+message ListProductsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+  // Здесь в будущем можно добавить фильтры, например: string category_id = 3;
+}
+
+message ListProductsResponse {
+  repeated Product products = 1;
+  string next_page_token = 2;
+}

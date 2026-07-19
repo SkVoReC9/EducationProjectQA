@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package store.order.v1;
+
+option go_package = "store/api/order/v1;order";
+
+import "google/api/annotations.proto";
+
+service OrderService {
+  // Конвертирует текущую корзину пользователя в заказ
+  rpc CreateOrder (CreateOrderRequest) returns (OrderResponse) {
+    option (google.api.http) = {
+      post: "/v1/orders"
+      body: "*"
+    };
+  }
+  // Проверить статус существующего заказа
+  rpc GetOrder (GetOrderRequest) returns (OrderResponse) {
+    option (google.api.http) = {
+      get: "/v1/orders/{order_id}"
+    };
+  }
+}
+
+// Статусы заказа описываем через Enum
+enum OrderStatus {
+  ORDER_STATUS_UNSPECIFIED = 0;
+  ORDER_STATUS_CREATED = 1;    // Создан, ожидает оплаты
+  ORDER_STATUS_PAID = 2;       // Оплачен
+  ORDER_STATUS_SHIPPED = 3;    // Отправлен
+  ORDER_STATUS_CANCELLED = 4;  // Отменен
+}
+
+message OrderItem {
+  string product_id = 1;
+  int32 quantity = 2;
+  int64 price_cents = 3; // Цена фиксации на момент покупки
+}
+
+message Order {
+  string id = 1;
+  string user_id = 2;
+  repeated OrderItem items = 3;
+  int64 total_amount_cents = 4;
+  OrderStatus status = 5;
+}
+
+message CreateOrderRequest {
+  string user_id = 1;
+  // Адрес доставки, способ оплаты и прочее можно добавить сюда
+}
+
+message GetOrderRequest {
+  string order_id = 1;
+}
+
+message OrderResponse {
+  Order order = 1;
+}
