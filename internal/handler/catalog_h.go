@@ -10,7 +10,7 @@ import (
 	// Импортируем сгенерированный код контрактов
 	pb "awesomeProject/gen/store/api/catalog/v1"
 
-	"awesomeProject/internal/repository/memory"
+	"awesomeProject/internal/repository"
 	"awesomeProject/internal/service"
 )
 
@@ -28,7 +28,7 @@ func (h *CatalogHandler) GetProduct(ctx context.Context, req *pb.GetProductReque
 	product, err := h.svc.GetProduct(req.GetProductId())
 	if err != nil {
 		// Маппинг ошибок в правильные gRPC статусы
-		if errors.Is(err, memory.ErrNotFound) {
+		if errors.Is(err, repository.ErrNotFound) {
 			return nil, status.Errorf(codes.NotFound, "Товар с ID '%s' не найден", req.GetProductId())
 		}
 		if err.Error() == "product_id cannot be empty" {

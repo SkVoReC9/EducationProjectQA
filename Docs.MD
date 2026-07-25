@@ -1,6 +1,6 @@
 # Документация API — Store API Simulator
 
-Симулятор магазина с двумя транспортами: **REST/JSON** (HTTP-шлюз) и **gRPC**. Данные хранятся в памяти и сбрасываются при перезапуске сервера.
+Симулятор магазина с двумя транспортами: **REST/JSON** (HTTP-шлюз) и **gRPC**. Данные хранятся в **PostgreSQL**.
 
 | Порт  | Протокол                         |
 |-------|----------------------------------|
@@ -15,10 +15,18 @@
 
 ### Seed-каталог
 
-| ID     | Название     | Цена (центы) | Остаток |
-|--------|--------------|--------------|---------|
-| prod-1 | iPhone 15    | 99900        | 10      |
-| prod-2 | MacBook Pro  | 199900       | 5       |
+50 товаров: **15 Apple**, **15 Samsung**, **10 NVIDIA**, **10 AMD**.
+
+| Бренд   | Диапазон UUID (суффикс) | Примеры |
+|---------|-------------------------|---------|
+| Apple   | `...001`–`...015` | iPhone 15, MacBook Pro 14 M3, AirPods Pro 2 |
+| Samsung | `...016`–`...030` | Galaxy S24 Ultra, Odyssey G9, 990 PRO |
+| NVIDIA  | `...031`–`...040` | RTX 4090, RTX 4070 SUPER, Jetson Orin Nano |
+| AMD     | `...041`–`...050` | Ryzen 9 7950X, RX 7900 XTX, EPYC 9654 |
+
+Префикс UUID: `550e8400-e29b-41d4-a716-44665544` + `0001`…`0050`. Полный список — в `migrations/002_seed.sql`.
+
+Пример ID iPhone 15: `550e8400-e29b-41d4-a716-446655440001`.
 
 ### Цены
 
@@ -60,18 +68,25 @@ GET /v1/products
 {
   "products": [
     {
-      "id": "prod-1",
+      "id": "550e8400-e29b-41d4-a716-446655440001",
       "name": "iPhone 15",
-      "description": "Latest Apple smartphone",
-      "priceCents": "99900",
-      "stockQuantity": 10
+      "description": "Apple smartphone with A16 Bionic",
+      "priceCents": "79900",
+      "stockQuantity": 40
     },
     {
-      "id": "prod-2",
-      "name": "MacBook Pro",
-      "description": "Apple laptop for professionals",
-      "priceCents": "199900",
-      "stockQuantity": 5
+      "id": "550e8400-e29b-41d4-a716-446655440002",
+      "name": "iPhone 15 Pro",
+      "description": "Apple flagship with titanium frame",
+      "priceCents": "99900",
+      "stockQuantity": 25
+    },
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440016",
+      "name": "Galaxy S24",
+      "description": "Samsung flagship smartphone",
+      "priceCents": "79900",
+      "stockQuantity": 35
     }
   ],
   "nextPageToken": ""
@@ -101,11 +116,11 @@ GET /v1/products/{product_id}
 ```json
 {
   "product": {
-    "id": "prod-1",
+    "id": "550e8400-e29b-41d4-a716-446655440001",
     "name": "iPhone 15",
-    "description": "Latest Apple smartphone",
-    "priceCents": "99900",
-    "stockQuantity": 10
+    "description": "Apple smartphone with A16 Bionic",
+    "priceCents": "79900",
+    "stockQuantity": 40
   }
 }
 ```
@@ -120,7 +135,7 @@ GET /v1/products/{product_id}
 **Пример:**
 
 ```bash
-curl http://localhost:8080/v1/products/prod-1
+curl http://localhost:8080/v1/products/550e8400-e29b-41d4-a716-446655440001
 ```
 
 ---
@@ -145,11 +160,11 @@ GET /v1/users/{user_id}/cart
 {
   "items": [
     {
-      "productId": "prod-1",
+      "productId": "550e8400-e29b-41d4-a716-446655440001",
       "quantity": 2
     }
   ],
-  "totalPriceCents": "199800"
+  "totalPriceCents": "159800"
 }
 ```
 
@@ -182,7 +197,7 @@ Content-Type: application/json
 
 ```json
 {
-  "product_id": "prod-1",
+  "product_id": "550e8400-e29b-41d4-a716-446655440001",
   "quantity": 1
 }
 ```
@@ -208,7 +223,7 @@ Content-Type: application/json
 ```bash
 curl -X POST http://localhost:8080/v1/users/user-1/cart/items \
   -H 'Content-Type: application/json' \
-  -d '{"product_id":"prod-1","quantity":1}'
+  -d '{"product_id":"550e8400-e29b-41d4-a716-446655440001","quantity":1}'
 ```
 
 ---
@@ -236,7 +251,7 @@ DELETE /v1/users/{user_id}/cart/items/{product_id}
 **Пример:**
 
 ```bash
-curl -X DELETE http://localhost:8080/v1/users/user-1/cart/items/prod-1
+curl -X DELETE http://localhost:8080/v1/users/user-1/cart/items/550e8400-e29b-41d4-a716-446655440001
 ```
 
 ---
@@ -302,16 +317,16 @@ Content-Type: application/json
 ```json
 {
   "order": {
-    "id": "ord-1710000000000",
+    "id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
     "userId": "user-1",
     "items": [
       {
-        "productId": "prod-1",
+        "productId": "550e8400-e29b-41d4-a716-446655440001",
         "quantity": 1,
-        "priceCents": "99900"
+        "priceCents": "79900"
       }
     ],
-    "totalAmountCents": "99900",
+    "totalAmountCents": "79900",
     "status": "ORDER_STATUS_CREATED"
   }
 }
@@ -356,7 +371,7 @@ GET /v1/orders/{order_id}
 **Пример:**
 
 ```bash
-curl http://localhost:8080/v1/orders/ord-1710000000000
+curl http://localhost:8080/v1/orders/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11
 ```
 
 ---
@@ -382,7 +397,7 @@ curl http://localhost:8080/v1/products
 # 2. Добавить в корзину
 curl -X POST http://localhost:8080/v1/users/user-1/cart/items \
   -H 'Content-Type: application/json' \
-  -d '{"product_id":"prod-1","quantity":1}'
+  -d '{"product_id":"550e8400-e29b-41d4-a716-446655440001","quantity":1}'
 
 # 3. Посмотреть корзину
 curl http://localhost:8080/v1/users/user-1/cart
@@ -393,7 +408,7 @@ curl -X POST http://localhost:8080/v1/orders \
   -d '{"user_id":"user-1"}'
 
 # 5. Получить заказ (подставьте id из ответа шага 4)
-curl http://localhost:8080/v1/orders/ord-XXXXXXXXXXXX
+curl http://localhost:8080/v1/orders/<order-uuid>
 ```
 
 ---
@@ -474,7 +489,7 @@ grpcurl -plaintext localhost:50051 store.catalog.v1.CatalogService/ListProducts
 **Пример:**
 
 ```bash
-grpcurl -plaintext -d '{"product_id":"prod-1"}' \
+grpcurl -plaintext -d '{"product_id":"550e8400-e29b-41d4-a716-446655440001"}' \
   localhost:50051 store.catalog.v1.CatalogService/GetProduct
 ```
 
@@ -530,7 +545,7 @@ grpcurl -plaintext -d '{"user_id":"user-1"}' \
 **Пример:**
 
 ```bash
-grpcurl -plaintext -d '{"user_id":"user-1","product_id":"prod-1","quantity":1}' \
+grpcurl -plaintext -d '{"user_id":"user-1","product_id":"550e8400-e29b-41d4-a716-446655440001","quantity":1}' \
   localhost:50051 store.cart.v1.CartService/AddItem
 ```
 
@@ -550,7 +565,7 @@ grpcurl -plaintext -d '{"user_id":"user-1","product_id":"prod-1","quantity":1}' 
 **Пример:**
 
 ```bash
-grpcurl -plaintext -d '{"user_id":"user-1","product_id":"prod-1"}' \
+grpcurl -plaintext -d '{"user_id":"user-1","product_id":"550e8400-e29b-41d4-a716-446655440001"}' \
   localhost:50051 store.cart.v1.CartService/RemoveItem
 ```
 
@@ -579,7 +594,7 @@ grpcurl -plaintext -d '{"user_id":"user-1"}' \
 
 | Поле                 | Тип                 | Описание                    |
 |----------------------|---------------------|-----------------------------|
-| `id`                 | string              | ID заказа (`ord-<timestamp>`)|
+| `id`                 | string              | ID заказа (`UUID`)|
 | `user_id`            | string              | ID пользователя             |
 | `items`              | repeated OrderItem  | Позиции заказа              |
 | `total_amount_cents` | int64               | Сумма заказа в центах       |
@@ -645,7 +660,7 @@ grpcurl -plaintext -d '{"user_id":"user-1"}' \
 **Пример:**
 
 ```bash
-grpcurl -plaintext -d '{"order_id":"ord-1710000000000"}' \
+grpcurl -plaintext -d '{"order_id":"a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"}' \
   localhost:50051 store.order.v1.OrderService/GetOrder
 ```
 

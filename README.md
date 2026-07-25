@@ -4,7 +4,7 @@ Project for training Auto QA skills with API (REST + gRPC), Database, UI, Queues
 
 ## Store API Simulator
 
-gRPC store backend with a JSON HTTP gateway. In-memory catalog, cart, and order services for local development and API testing.
+gRPC store backend with a JSON HTTP gateway. Catalog, cart, and order services backed by **PostgreSQL**.
 
 ## Features
 
@@ -12,17 +12,17 @@ gRPC store backend with a JSON HTTP gateway. In-memory catalog, cart, and order 
 - **Cart** — add/remove items, get cart, clear cart
 - **Orders** — create an order from a cart, fetch order by ID
 - **Dual transport** — native gRPC (`:50051`) and REST/JSON via grpc-gateway (`:8080`)
-- **In-memory storage** — no database required; data resets on restart
+- **PostgreSQL** — persistent storage via `pgx` + `database/sql`
 
 ## Requirements
 
 - Go **1.26+**
-- Docker & Docker Compose (optional)
+- Docker & Docker Compose (Postgres runs in Docker — no local Postgres install needed)
 - For codegen: `protoc`, `protoc-gen-go`, `protoc-gen-go-grpc`, `protoc-gen-grpc-gateway`
 
 ## Quick start
 
-### Docker
+### Docker (API + Postgres)
 
 ```bash
 docker compose up --build
@@ -30,12 +30,18 @@ docker compose up --build
 
 - gRPC: `localhost:50051`
 - HTTP: `localhost:8080`
+- Postgres: `localhost:5432` (user/password/db: `store` / `store` / `store`)
 
-### Local
+On first start Docker pulls the Postgres image, creates the database, and applies SQL from `migrations/` (schema + seed catalog).
+
+### Local (API on host, Postgres in Docker)
 
 ```bash
-go run ./cmd/server
+docker compose up -d postgres
+DATABASE_URL='postgres://store:store@localhost:5432/store?sslmode=disable' go run ./cmd/server
 ```
+
+Default `DATABASE_URL` if unset: `postgres://store:store@localhost:5432/store?sslmode=disable`.
 
 ## Project layout
 
@@ -43,19 +49,26 @@ go run ./cmd/server
 cmd/server/          # entrypoint (gRPC + HTTP gateway)
 proto/               # Catalog, Cart, Order contracts
 gen/                 # generated Go / gRPC / gateway code
+migrations/          # Postgres schema + seed (applied on first DB init)
 internal/
   handler/           # gRPC handlers
   service/           # business logic
-  repository/        # models + in-memory repos
+  repository/        # models + postgres repos
 third_party/         # googleapis for HTTP annotations
 ```
 
 ## Seed catalog
 
-| ID      | Name         | Price (cents) | Stock |
-|---------|--------------|---------------|-------|
-| prod-1  | iPhone 15    | 99900         | 10    |
-| prod-2  | MacBook Pro  | 199900        | 5     |
+50 products: **15 Apple**, **15 Samsung**, **10 NVIDIA**, **10 AMD**.
+
+| Brand   | ID range (suffix) | Examples |
+|---------|-------------------|----------|
+| Apple   | `...001`–`...015` | iPhone 15, MacBook Pro 14 M3, AirPods Pro 2 |
+| Samsung | `...016`–`...030` | Galaxy S24 Ultra, Odyssey G9, 990 PRO |
+| NVIDIA  | `...031`–`...040` | RTX 4090, RTX 4070 SUPER, Jetson Orin Nano |
+| AMD     | `...041`–`...050` | Ryzen 9 7950X, RX 7900 XTX, EPYC 9654 |
+
+Full UUID prefix: `550e8400-e29b-41d4-a716-44665544` + `0001`…`0050`. See [`migrations/002_seed.sql`](migrations/002_seed.sql).
 
 ## HTTP API
 
@@ -81,7 +94,7 @@ Add item body:
 
 ```json
 {
-  "product_id": "prod-1",
+  "product_id": "550e8400-e29b-41d4-a716-446655440001",
   "quantity": 1
 }
 ```
@@ -110,7 +123,7 @@ curl http://localhost:8080/v1/products
 # Add to cart
 curl -X POST http://localhost:8080/v1/users/user-1/cart/items \
   -H 'Content-Type: application/json' \
-  -d '{"product_id":"prod-1","quantity":1}'
+  -d '{"product_id":"550e8400-e29b-41d4-a716-446655440001","quantity":1}'
 
 # Create order from cart
 curl -X POST http://localhost:8080/v1/orders \
@@ -150,3 +163,4 @@ go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@lat
 |-------|-----------------------|
 | 50051 | gRPC                  |
 | 8080  | HTTP JSON (gateway)   |
+| 5432  | PostgreSQL            |

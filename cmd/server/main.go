@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc"
@@ -18,23 +19,34 @@ import (
 	pbOrder "awesomeProject/gen/store/api/order/v1"
 
 	"awesomeProject/internal/handler"
-	"awesomeProject/internal/repository/memory"
+	"awesomeProject/internal/repository/postgres"
 	"awesomeProject/internal/service"
 )
 
 func main() {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		dsn = "postgres://store:store@localhost:5432/store?sslmode=disable"
+	}
+
+	db, err := postgres.Open(dsn)
+	if err != nil {
+		log.Fatalf("database: %v", err)
+	}
+	defer db.Close()
+
 	// --- 1. Инициализация Каталога ---
-	catalogRepo := memory.NewCatalogRepository()
+	catalogRepo := postgres.NewCatalogRepository(db)
 	catalogService := service.NewCatalogService(catalogRepo)
 	catalogHandler := handler.NewCatalogHandler(catalogService)
 
 	// --- 2. Инициализация Корзины ---
-	cartRepo := memory.NewCartRepository()
+	cartRepo := postgres.NewCartRepository(db)
 	cartService := service.NewCartService(cartRepo, catalogService)
 	cartHandler := handler.NewCartHandler(cartService)
 
 	// --- 3. Инициализация Заказов ---
-	orderRepo := memory.NewOrderRepository()
+	orderRepo := postgres.NewOrderRepository(db)
 	// Обрати внимание: OrderService забирает себе CartService и CatalogService
 	orderService := service.NewOrderService(orderRepo, cartService, catalogService)
 	orderHandler := handler.NewOrderHandler(orderService)
