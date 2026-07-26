@@ -2,7 +2,7 @@
 
 Project for training Auto QA skills with API (REST + gRPC), Database, UI, Queues.
 
-**QA mentees:** API reference and expected behavior → [`Docs.MD`](Docs.MD).
+**QA mentees:** API reference → [`Docs.MD`](Docs.MD) · What changed per iteration → [`RELEASE.md`](RELEASE.md).
 
 ## Store API Simulator
 
