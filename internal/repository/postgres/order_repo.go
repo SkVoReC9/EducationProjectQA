@@ -3,7 +3,9 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -28,12 +30,15 @@ func (r *OrderRepository) CreateOrder(order repository.Order) (repository.Order,
 
 	order.ID = uuid.NewString()
 	order.Status = 1 // ORDER_STATUS_CREATED
+	now := time.Now()
+	order.CreatedAt = now
+	order.UpdatedAt = now
 
 	const insertOrder = `
-		INSERT INTO orders (id, user_id, total_amount_cents, status)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO orders (id, user_id, total_amount_cents, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
 	`
-	if _, err := tx.ExecContext(ctx, insertOrder, order.ID, order.UserID, order.TotalAmountCents, order.Status); err != nil {
+	if _, err := tx.ExecContext(ctx, insertOrder, order.ID, order.UserID, order.TotalAmountCents, order.Status, order.CreatedAt, order.UpdatedAt); err != nil {
 		return repository.Order{}, fmt.Errorf("insert order: %w", err)
 	}
 
@@ -57,7 +62,7 @@ func (r *OrderRepository) GetOrder(orderID string) (repository.Order, error) {
 	ctx := context.Background()
 
 	const orderQ = `
-		SELECT id, user_id, total_amount_cents, status
+		SELECT id, user_id, total_amount_cents, status, created_at, updated_at
 		FROM orders
 		WHERE id = $1
 	`
@@ -68,14 +73,25 @@ func (r *OrderRepository) GetOrder(orderID string) (repository.Order, error) {
 		&order.UserID,
 		&order.TotalAmountCents,
 		&order.Status,
+		&order.CreatedAt,
+		&order.UpdatedAt,
 	)
-	if err == sql.ErrNoRows {
-		return repository.Order{}, fmt.Errorf("заказ не найден")
+	if errors.Is(err, sql.ErrNoRows) {
+		return repository.Order{}, repository.ErrOrderNotFound
 	}
 	if err != nil {
 		return repository.Order{}, fmt.Errorf("get order: %w", err)
 	}
 
+	items, err := r.loadItems(ctx, orderID)
+	if err != nil {
+		return repository.Order{}, err
+	}
+	order.Items = items
+	return order, nil
+}
+
+func (r *OrderRepository) loadItems(ctx context.Context, orderID string) ([]repository.OrderItem, error) {
 	const itemsQ = `
 		SELECT product_id, quantity, price_cents
 		FROM order_items
@@ -84,21 +100,51 @@ func (r *OrderRepository) GetOrder(orderID string) (repository.Order, error) {
 	`
 	rows, err := r.db.QueryContext(ctx, itemsQ, orderID)
 	if err != nil {
-		return repository.Order{}, fmt.Errorf("get order items: %w", err)
+		return nil, fmt.Errorf("get order items: %w", err)
 	}
 	defer rows.Close()
 
-	order.Items = make([]repository.OrderItem, 0)
+	items := make([]repository.OrderItem, 0)
 	for rows.Next() {
 		var item repository.OrderItem
 		if err := rows.Scan(&item.ProductID, &item.Quantity, &item.PriceCents); err != nil {
-			return repository.Order{}, fmt.Errorf("scan order item: %w", err)
+			return nil, fmt.Errorf("scan order item: %w", err)
 		}
-		order.Items = append(order.Items, item)
+		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
-		return repository.Order{}, fmt.Errorf("get order items rows: %w", err)
+		return nil, fmt.Errorf("get order items rows: %w", err)
 	}
+	return items, nil
+}
 
+func (r *OrderRepository) UpdateOrderStatus(orderID string, fromStatus, toStatus int32) (repository.Order, error) {
+	ctx := context.Background()
+	const q = `
+		UPDATE orders
+		SET status = $3, updated_at = NOW()
+		WHERE id = $1 AND status = $2
+		RETURNING id, user_id, total_amount_cents, status, created_at, updated_at
+	`
+	var order repository.Order
+	err := r.db.QueryRowContext(ctx, q, orderID, fromStatus, toStatus).Scan(
+		&order.ID,
+		&order.UserID,
+		&order.TotalAmountCents,
+		&order.Status,
+		&order.CreatedAt,
+		&order.UpdatedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return repository.Order{}, fmt.Errorf("status transition rejected")
+	}
+	if err != nil {
+		return repository.Order{}, fmt.Errorf("update order status: %w", err)
+	}
+	items, err := r.loadItems(ctx, orderID)
+	if err != nil {
+		return repository.Order{}, err
+	}
+	order.Items = items
 	return order, nil
 }

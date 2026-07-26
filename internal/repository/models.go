@@ -1,46 +1,70 @@
 package repository
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
 
 var ErrNotFound = errors.New("product not found")
+var ErrUserNotFound = errors.New("user not found")
+var ErrPromocodeNotFound = errors.New("promocode not found")
+var ErrOrderNotFound = errors.New("order not found")
 
-// --- Модели Каталога ---
+type User struct {
+	ID           string
+	Email        string
+	PasswordHash string
+	Name         string
+	Role         string
+	CreatedAt    time.Time
+}
 
-// Product - внутренняя модель товара
 type Product struct {
 	ID            string
 	Name          string
 	Description   string
 	PriceCents    int64
 	StockQuantity int32
+	Brand         string
 }
 
-// --- Модели Корзины ---
-
-// CartItem - позиция в корзине
 type CartItem struct {
 	ProductID string
 	Quantity  int32
 }
 
-// Cart - корзина конкретного пользователя
 type Cart struct {
-	UserID string
-	Items  map[string]CartItem // Ключ - ProductID для быстрого поиска
+	UserID    string
+	Items     map[string]CartItem
+	Promocode string
+	UpdatedAt time.Time
 }
 
-// OrderItem - зафиксированная позиция в чеке
 type OrderItem struct {
 	ProductID  string
 	Quantity   int32
-	PriceCents int64 // Цена фиксируется на момент покупки!
+	PriceCents int64
 }
 
-// Order - итоговый заказ пользователя
 type Order struct {
 	ID               string
 	UserID           string
 	Items            []OrderItem
 	TotalAmountCents int64
-	Status           int32 // 1 - CREATED, 2 - PAID, etc.
+	Status           int32
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
+const (
+	DiscountPercent    = "percent"
+	DiscountFixedCents = "fixed_cents"
+)
+
+type Promocode struct {
+	Code          string
+	DiscountType  string
+	DiscountValue int64
+	Active        bool
+	ExpiresAt     *time.Time
 }

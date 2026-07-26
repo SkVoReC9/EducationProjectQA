@@ -45,6 +45,7 @@ func (h *CatalogHandler) GetProduct(ctx context.Context, req *pb.GetProductReque
 			Description:   product.Description,
 			PriceCents:    product.PriceCents,
 			StockQuantity: product.StockQuantity,
+			Brand:         product.Brand,
 		},
 	}, nil
 }
@@ -63,6 +64,7 @@ func (h *CatalogHandler) ListProducts(ctx context.Context, req *pb.ListProductsR
 			Description:   p.Description,
 			PriceCents:    p.PriceCents,
 			StockQuantity: p.StockQuantity,
+			Brand:         p.Brand,
 		})
 	}
 

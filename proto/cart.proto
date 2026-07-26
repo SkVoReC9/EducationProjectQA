@@ -7,29 +7,41 @@ option go_package = "store/api/cart/v1;cart";
 import "google/api/annotations.proto";
 
 service CartService {
-  // Добавить товар в корзину
   rpc AddItem (AddItemRequest) returns (CartResponse) {
     option (google.api.http) = {
       post: "/v1/users/{user_id}/cart/items"
       body: "*"
     };
   }
-  // Удалить товар из корзины (или уменьшить количество)
+
   rpc RemoveItem (RemoveItemRequest) returns (CartResponse) {
     option (google.api.http) = {
       delete: "/v1/users/{user_id}/cart/items/{product_id}"
     };
   }
-  // Получить текущее состояние корзины
+
   rpc GetCart (GetCartRequest) returns (CartResponse) {
     option (google.api.http) = {
       get: "/v1/users/{user_id}/cart"
     };
   }
-  // Очистить корзину полностью
+
   rpc ClearCart (ClearCartRequest) returns (CartResponse) {
     option (google.api.http) = {
       delete: "/v1/users/{user_id}/cart"
+    };
+  }
+
+  rpc ApplyPromocode (ApplyPromocodeRequest) returns (CartResponse) {
+    option (google.api.http) = {
+      post: "/v1/users/{user_id}/cart/promocode"
+      body: "*"
+    };
+  }
+
+  rpc ClearPromocode (ClearPromocodeRequest) returns (CartResponse) {
+    option (google.api.http) = {
+      delete: "/v1/users/{user_id}/cart/promocode"
     };
   }
 }
@@ -58,8 +70,21 @@ message ClearCartRequest {
   string user_id = 1;
 }
 
-// Единый ответ для изменения состояния корзины
+message ApplyPromocodeRequest {
+  string user_id = 1;
+  string code = 2;
+}
+
+message ClearPromocodeRequest {
+  string user_id = 1;
+}
+
 message CartResponse {
   repeated CartItem items = 1;
-  int64 total_price_cents = 2; // Пересчитанная общая стоимость
+  int64 total_price_cents = 2;
+  int64 subtotal_cents = 3;
+  int64 discount_cents = 4;
+  string applied_promocode = 5;
+  bool combo_discount_applied = 6;
+  string expires_at = 7;
 }

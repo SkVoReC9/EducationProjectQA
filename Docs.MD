@@ -9,13 +9,37 @@
 
 Базовый URL REST: `http://localhost:8080`
 
+JSON от gateway — **camelCase** (`userId`, `accessToken`, `totalPriceCents`, …).
+
 ---
 
 ## Общие сведения
 
+### Auth
+
+| Область | Требование |
+|---------|------------|
+| Каталог, register, login, get user | Публично |
+| Корзина, заказы | `Authorization: Bearer <access_token>` |
+| Admin-промокоды `/v1/admin/*` | JWT с ролью `admin` |
+
+- TTL токена: **24 часа**.
+- В JWT: `sub` = user id, `role` = `user` \| `admin`.
+- На cart/order `user_id` в пути/теле **должен совпадать** с `sub` → иначе **403**.
+- Без токена / битый токен на protected → **401**.
+- Не-admin на admin API → **403**.
+
+Сидовый админ:
+
+| Поле | Значение |
+|------|----------|
+| Email | `admin@store.local` |
+| Password | `admin123` |
+| Role | `admin` |
+
 ### Seed-каталог
 
-50 товаров: **15 Apple**, **15 Samsung**, **10 NVIDIA**, **10 AMD**.
+50 товаров: **15 Apple**, **15 Samsung**, **10 NVIDIA**, **10 AMD**. У каждого товара есть поле `brand`: `apple` / `samsung` / `nvidia` / `amd`.
 
 | Бренд   | Диапазон UUID (суффикс) | Примеры |
 |---------|-------------------------|---------|
@@ -28,24 +52,89 @@
 
 Пример ID iPhone 15: `550e8400-e29b-41d4-a716-446655440001`.
 
-### Цены
+### Цены и скидки (ожидаемое поведение)
 
-Все денежные поля передаются в **центах** (`price_cents`, `total_price_cents`, `total_amount_cents`). Например, `99900` = $999.00.
+Все денежные поля — в **центах**.
+
+**Сабтотал** — сумма `priceCents * quantity` по позициям корзины.
+
+**Combo-скидка 10%** — если в корзине есть:
+
+- ≥1 товар с `brand = nvidia`, **и**
+- ≥1 товар, в **названии** которого есть `iPhone`
+
+Тогда 10% от сабтотала. MacBook / AirPods / прочий Apple **без** `iPhone` в имени combo **не** активируют.
+
+**Промокод** — применяется отдельно (`POST .../cart/promocode`).
+
+Сидовые коды:
+
+| Код | Эффект |
+|-----|--------|
+| `SAVE10` | 10% |
+| `FLAT500` | 500 центов |
+| `WELCOME` | 15% |
+
+Ожидаемые правила промо:
+
+1. Коды **без учёта регистра** (`save10` ≡ `SAVE10`).
+2. Промокод и combo **не суммируются**: если оба применимы, действует **только промокод**.
+3. `ClearCart` очищает позиции **и** снимает промокод.
+4. Итог заказа при `POST /v1/orders` должен совпадать с итогом `GET` корзины (те же скидки).
+
+**TTL корзины:** 30 минут неактивности. Обновляется при add / remove / clear / apply/clear promocode. **Не** обновляется от простого `GET` корзины. После истечения — пустая корзина.
 
 ### Ошибки
 
 | gRPC-код              | HTTP-код | Когда возникает |
 |-----------------------|----------|-----------------|
 | `InvalidArgument`     | 400      | Пустые обязательные поля, невалидное количество |
-| `NotFound`            | 404      | Товар или заказ не найден |
-| `FailedPrecondition`  | 400      | Нарушение предусловия (например, пустая корзина — если проверка включена) |
+| `Unauthenticated`     | 401      | Нет / невалидный JWT |
+| `PermissionDenied`    | 403      | Чужой `user_id` или не admin |
+| `NotFound`            | 404      | Товар, заказ, пользователь, промокод не найден |
+| `FailedPrecondition`  | 400      | Недопустимый переход статуса, пустая корзина (если проверка включена) |
 | `Internal`            | 500      | Внутренняя ошибка сервера |
 
-Через REST ошибки возвращаются в формате gRPC-gateway (JSON с полями `code`, `message`, `details`).
+Через REST ошибки — формат gRPC-gateway (`code`, `message`, `details`).
 
 ---
 
 # REST API
+
+## 0. Пользователи
+
+### 0.1. Регистрация
+
+```http
+POST /v1/users/register
+Content-Type: application/json
+```
+
+```json
+{ "email": "qa@example.com", "password": "secret123", "name": "QA" }
+```
+
+**Ответ `200`:** `user` + `accessToken`. У `user` есть `id`, `email`, `name`, `role`, `createdAt`.
+
+### 0.2. Вход
+
+```http
+POST /v1/users/login
+```
+
+```json
+{ "email": "qa@example.com", "password": "secret123" }
+```
+
+**Ответ `200`:** `user` + `accessToken`. Неверные данные → **401**.
+
+### 0.3. Получить пользователя
+
+```http
+GET /v1/users/{user_id}
+```
+
+---
 
 ## 1. Каталог
 
@@ -54,13 +143,6 @@
 ```http
 GET /v1/products
 ```
-
-**Query-параметры** (зарезервированы, пока не используются):
-
-| Параметр     | Тип    | Описание              |
-|--------------|--------|-----------------------|
-| `page_size`  | int32  | Размер страницы       |
-| `page_token` | string | Токен следующей страницы |
 
 **Ответ `200`:**
 
@@ -72,28 +154,13 @@ GET /v1/products
       "name": "iPhone 15",
       "description": "Apple smartphone with A16 Bionic",
       "priceCents": "79900",
-      "stockQuantity": 40
-    },
-    {
-      "id": "550e8400-e29b-41d4-a716-446655440002",
-      "name": "iPhone 15 Pro",
-      "description": "Apple flagship with titanium frame",
-      "priceCents": "99900",
-      "stockQuantity": 25
-    },
-    {
-      "id": "550e8400-e29b-41d4-a716-446655440016",
-      "name": "Galaxy S24",
-      "description": "Samsung flagship smartphone",
-      "priceCents": "79900",
-      "stockQuantity": 35
+      "stockQuantity": 40,
+      "brand": "apple"
     }
   ],
   "nextPageToken": ""
 }
 ```
-
-**Пример:**
 
 ```bash
 curl http://localhost:8080/v1/products
@@ -107,32 +174,7 @@ curl http://localhost:8080/v1/products
 GET /v1/products/{product_id}
 ```
 
-| Параметр пути | Тип    | Обязательный | Описание   |
-|---------------|--------|--------------|------------|
-| `product_id`  | string | да           | ID товара  |
-
-**Ответ `200`:**
-
-```json
-{
-  "product": {
-    "id": "550e8400-e29b-41d4-a716-446655440001",
-    "name": "iPhone 15",
-    "description": "Apple smartphone with A16 Bionic",
-    "priceCents": "79900",
-    "stockQuantity": 40
-  }
-}
-```
-
-**Ошибки:**
-
-| Условие              | HTTP | Сообщение |
-|----------------------|------|-----------|
-| Товар не найден      | 404  | Товар с ID '...' не найден |
-| Пустой `product_id`  | 400  | ID товара не может быть пустым |
-
-**Пример:**
+**Ошибки:** товар не найден → **404**; пустой id → **400**.
 
 ```bash
 curl http://localhost:8080/v1/products/550e8400-e29b-41d4-a716-446655440001
@@ -140,7 +182,32 @@ curl http://localhost:8080/v1/products/550e8400-e29b-41d4-a716-446655440001
 
 ---
 
-## 2. Корзина
+## 2. Корзина (JWT)
+
+Во все запросы: `-H "Authorization: Bearer ${TOKEN}"`.
+
+### Ответ корзины
+
+```json
+{
+  "items": [{ "productId": "...", "quantity": 1 }],
+  "totalPriceCents": "71910",
+  "subtotalCents": "79900",
+  "discountCents": "7990",
+  "appliedPromocode": "SAVE10",
+  "comboDiscountApplied": false,
+  "expiresAt": "2026-07-26T12:30:00Z"
+}
+```
+
+| Поле | Описание |
+|------|----------|
+| `subtotalCents` | До скидок |
+| `discountCents` | Сумма скидки |
+| `totalPriceCents` | После скидок |
+| `appliedPromocode` | Текущий код (если есть) |
+| `comboDiscountApplied` | Сработала ли combo-правило |
+| `expiresAt` | Когда истечёт TTL (RFC3339) |
 
 ### 2.1. Получить корзину
 
@@ -148,113 +215,34 @@ curl http://localhost:8080/v1/products/550e8400-e29b-41d4-a716-446655440001
 GET /v1/users/{user_id}/cart
 ```
 
-| Параметр пути | Тип    | Обязательный | Описание        |
-|---------------|--------|--------------|-----------------|
-| `user_id`     | string | да           | ID пользователя |
+Пустая корзина → `items: []`, суммы `0`.
 
-Если корзины ещё нет, возвращается пустой список товаров и сумма `0`.
-
-**Ответ `200`:**
-
-```json
-{
-  "items": [
-    {
-      "productId": "550e8400-e29b-41d4-a716-446655440001",
-      "quantity": 2
-    }
-  ],
-  "totalPriceCents": "159800"
-}
-```
-
-**Ошибки:**
-
-| Условие         | HTTP | Сообщение            |
-|-----------------|------|----------------------|
-| Пустой `user_id`| 400  | user_id обязателен   |
-
-**Пример:**
-
-```bash
-curl http://localhost:8080/v1/users/user-1/cart
-```
-
----
-
-### 2.2. Добавить товар в корзину
+### 2.2. Добавить товар
 
 ```http
 POST /v1/users/{user_id}/cart/items
-Content-Type: application/json
 ```
-
-| Параметр пути | Тип    | Обязательный | Описание        |
-|---------------|--------|--------------|-----------------|
-| `user_id`     | string | да           | ID пользователя |
-
-**Тело запроса:**
 
 ```json
-{
-  "product_id": "550e8400-e29b-41d4-a716-446655440001",
-  "quantity": 1
-}
+{ "product_id": "550e8400-e29b-41d4-a716-446655440001", "quantity": 1 }
 ```
 
-| Поле         | Тип    | Обязательный | Описание                          |
-|--------------|--------|--------------|-----------------------------------|
-| `product_id` | string | да           | ID товара из каталога             |
-| `quantity`   | int32  | да           | Количество (от 1 до 99 включительно) |
-
-**Ответ `200`:** актуальная корзина (`items` + `totalPriceCents`).
-
-**Ошибки:**
-
-| Условие                         | HTTP | Сообщение |
-|---------------------------------|------|-----------|
-| Пустой `user_id`                | 400  | user_id обязателен |
-| `quantity <= 0`                 | 400  | quantity must be greater than zero |
-| `quantity > 99`                 | 400  | max 99 items per product allowed |
-| Товар не найден в каталоге      | 404  | товар не найден в каталоге |
-
-**Пример:**
+Ожидание: повторное добавление того же товара **увеличивает** quantity; лимит 1–99; нельзя превысить `stockQuantity`; неизвестный товар → **404**.
 
 ```bash
-curl -X POST http://localhost:8080/v1/users/user-1/cart/items \
+curl -X POST "http://localhost:8080/v1/users/${USER_ID}/cart/items" \
+  -H "Authorization: Bearer ${TOKEN}" \
   -H 'Content-Type: application/json' \
   -d '{"product_id":"550e8400-e29b-41d4-a716-446655440001","quantity":1}'
 ```
 
----
-
-### 2.3. Удалить товар из корзины
+### 2.3. Удалить товар
 
 ```http
 DELETE /v1/users/{user_id}/cart/items/{product_id}
 ```
 
-| Параметр пути | Тип    | Обязательный | Описание        |
-|---------------|--------|--------------|-----------------|
-| `user_id`     | string | да           | ID пользователя |
-| `product_id`  | string | да           | ID товара       |
-
-**Ответ `200`:** актуальная корзина после удаления.
-
-**Ошибки:**
-
-| Условие                              | HTTP | Сообщение |
-|--------------------------------------|------|-----------|
-| Пустой `user_id`                     | 400  | user_id обязателен |
-| Товара нет в корзине                 | 500  | CRITICAL: pointer to nil item in memory map |
-
-**Пример:**
-
-```bash
-curl -X DELETE http://localhost:8080/v1/users/user-1/cart/items/550e8400-e29b-41d4-a716-446655440001
-```
-
----
+Ожидание: товара нет в корзине → **404**.
 
 ### 2.4. Очистить корзину
 
@@ -262,153 +250,163 @@ curl -X DELETE http://localhost:8080/v1/users/user-1/cart/items/550e8400-e29b-41
 DELETE /v1/users/{user_id}/cart
 ```
 
-| Параметр пути | Тип    | Обязательный | Описание        |
-|---------------|--------|--------------|-----------------|
-| `user_id`     | string | да           | ID пользователя |
+Ожидание: пустые `items` и сброшенный промокод.
 
-**Ответ `200`:** пустая корзина.
+### 2.5. Применить промокод
 
-```json
-{
-  "items": [],
-  "totalPriceCents": "0"
-}
+```http
+POST /v1/users/{user_id}/cart/promocode
 ```
 
-**Ошибки:**
+```json
+{ "code": "SAVE10" }
+```
 
-| Условие          | HTTP | Сообщение          |
-|------------------|------|--------------------|
-| Пустой `user_id` | 400  | user_id обязателен |
+Неизвестный / неактивный / просроченный код → **404**.
 
-**Пример:**
+### 2.6. Снять промокод
 
-```bash
-curl -X DELETE http://localhost:8080/v1/users/user-1/cart
+```http
+DELETE /v1/users/{user_id}/cart/promocode
 ```
 
 ---
 
-## 3. Заказы
+## 3. Заказы (JWT)
 
-### 3.1. Создать заказ из корзины
+### Статусы
+
+| JSON | Число | Как появляется |
+|------|-------|----------------|
+| `ORDER_STATUS_CREATED` | 1 | После `POST /v1/orders` |
+| `ORDER_STATUS_PAID` | 2 | Ручной `UpdateOrderStatus` из `CREATED` |
+| `ORDER_STATUS_SHIPPED` | 3 | Авто через **10 мин** после `PAID` (на `GET` заказа) |
+| `ORDER_STATUS_CANCELLED` | 4 | Cancel / status из `CREATED` |
+| `ORDER_STATUS_COMPLETED` | 5 | Авто через **10 мин** после `SHIPPED` |
+
+Ручные переходы только: `CREATED` → `PAID`, `CREATED` → `CANCELLED`.  
+`fromStatus` должен совпадать с текущим → иначе **FailedPrecondition**.  
+Чужой заказ → **403**.
+
+### 3.1. Создать заказ
 
 ```http
 POST /v1/orders
-Content-Type: application/json
 ```
-
-Создаёт заказ на основе текущей корзины пользователя. После успешного создания корзина очищается. Статус нового заказа — `ORDER_STATUS_CREATED` (1).
-
-**Тело запроса:**
 
 ```json
-{
-  "user_id": "user-1"
-}
+{ "user_id": "<uuid>" }
 ```
 
-| Поле      | Тип    | Обязательный | Описание        |
-|-----------|--------|--------------|-----------------|
-| `user_id` | string | да           | ID пользователя |
+После успеха корзина очищается. Ожидание: пустая корзина → ошибка предусловия (не заказ на 0).
 
-**Ответ `200`:**
-
-```json
-{
-  "order": {
-    "id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
-    "userId": "user-1",
-    "items": [
-      {
-        "productId": "550e8400-e29b-41d4-a716-446655440001",
-        "quantity": 1,
-        "priceCents": "79900"
-      }
-    ],
-    "totalAmountCents": "79900",
-    "status": "ORDER_STATUS_CREATED"
-  }
-}
-```
-
-**Ошибки:**
-
-| Условие                    | HTTP | Сообщение |
-|----------------------------|------|-----------|
-| Пустой `user_id`           | 400  | user_id обязателен |
-| Товар из корзины недоступен| 500  | ошибка создания заказа: ... |
-
-**Пример:**
-
-```bash
-curl -X POST http://localhost:8080/v1/orders \
-  -H 'Content-Type: application/json' \
-  -d '{"user_id":"user-1"}'
-```
-
----
-
-### 3.2. Получить заказ по ID
+### 3.2. Получить заказ
 
 ```http
 GET /v1/orders/{order_id}
 ```
 
-| Параметр пути | Тип    | Обязательный | Описание  |
-|---------------|--------|--------------|-----------|
-| `order_id`    | string | да           | ID заказа |
+При `GET` сервер может продвинуть `PAID`→`SHIPPED` / `SHIPPED`→`COMPLETED` по таймерам.
 
-**Ответ `200`:** объект `order` (см. выше).
+### 3.3. Отменить заказ
 
-**Ошибки:**
+```http
+POST /v1/orders/{order_id}/cancel
+```
 
-| Условие           | HTTP | Сообщение          |
-|-------------------|------|--------------------|
-| Пустой `order_id` | 400  | order_id обязателен |
-| Заказ не найден   | 404  | заказ не найден    |
+Только из `CREATED`.
 
-**Пример:**
+### 3.4. Обновить статус
 
-```bash
-curl http://localhost:8080/v1/orders/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11
+```http
+POST /v1/orders/{order_id}/status
+```
+
+```json
+{
+  "fromStatus": "ORDER_STATUS_CREATED",
+  "toStatus": "ORDER_STATUS_PAID"
+}
 ```
 
 ---
 
-### Статусы заказа (REST / JSON)
+## 4. Admin-промокоды (JWT admin)
 
-| Значение JSON              | Число | Описание              |
-|----------------------------|-------|-----------------------|
-| `ORDER_STATUS_UNSPECIFIED` | 0     | Не задан              |
-| `ORDER_STATUS_CREATED`     | 1     | Создан, ожидает оплаты|
-| `ORDER_STATUS_PAID`        | 2     | Оплачен               |
-| `ORDER_STATUS_SHIPPED`     | 3     | Отправлен             |
-| `ORDER_STATUS_CANCELLED`   | 4     | Отменён               |
+```http
+GET    /v1/admin/promocodes
+POST   /v1/admin/promocodes
+PATCH  /v1/admin/promocodes/{code}
+DELETE /v1/admin/promocodes/{code}
+```
+
+Создание:
+
+```json
+{
+  "code": "SPRING20",
+  "discountType": "DISCOUNT_TYPE_PERCENT",
+  "discountValue": "20",
+  "active": true
+}
+```
+
+Новые коды создаются **active**; деактивация — через `PATCH`.  
+`discountType`: `DISCOUNT_TYPE_PERCENT` или `DISCOUNT_TYPE_FIXED_CENTS`.  
+Опционально `expiresAt` (RFC3339).
+
+```bash
+ADMIN_TOKEN=$(curl -s http://localhost:8080/v1/users/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@store.local","password":"admin123"}' | jq -r .accessToken)
+
+curl http://localhost:8080/v1/admin/promocodes \
+  -H "Authorization: Bearer ${ADMIN_TOKEN}"
+```
 
 ---
 
 ## Пример полного сценария (REST)
 
 ```bash
-# 1. Список товаров
+# Регистрация / логин
+curl -s http://localhost:8080/v1/users/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"qa@example.com","password":"secret123","name":"QA"}'
+
+TOKEN=$(curl -s http://localhost:8080/v1/users/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"qa@example.com","password":"secret123"}' | jq -r .accessToken)
+USER_ID=$(curl -s http://localhost:8080/v1/users/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"qa@example.com","password":"secret123"}' | jq -r .user.id)
+
+# Каталог
 curl http://localhost:8080/v1/products
 
-# 2. Добавить в корзину
-curl -X POST http://localhost:8080/v1/users/user-1/cart/items \
-  -H 'Content-Type: application/json' \
+# Корзина + промо
+curl -X POST "http://localhost:8080/v1/users/${USER_ID}/cart/items" \
+  -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
   -d '{"product_id":"550e8400-e29b-41d4-a716-446655440001","quantity":1}'
 
-# 3. Посмотреть корзину
-curl http://localhost:8080/v1/users/user-1/cart
+curl -X POST "http://localhost:8080/v1/users/${USER_ID}/cart/promocode" \
+  -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+  -d '{"code":"SAVE10"}'
 
-# 4. Оформить заказ
-curl -X POST http://localhost:8080/v1/orders \
-  -H 'Content-Type: application/json' \
-  -d '{"user_id":"user-1"}'
+curl "http://localhost:8080/v1/users/${USER_ID}/cart" \
+  -H "Authorization: Bearer ${TOKEN}"
 
-# 5. Получить заказ (подставьте id из ответа шага 4)
-curl http://localhost:8080/v1/orders/<order-uuid>
+# Заказ + оплата
+ORDER_ID=$(curl -s -X POST http://localhost:8080/v1/orders \
+  -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+  -d "{\"user_id\":\"${USER_ID}\"}" | jq -r .order.id)
+
+curl -X POST "http://localhost:8080/v1/orders/${ORDER_ID}/status" \
+  -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+  -d '{"fromStatus":"ORDER_STATUS_CREATED","toStatus":"ORDER_STATUS_PAID"}'
+
+curl "http://localhost:8080/v1/orders/${ORDER_ID}" \
+  -H "Authorization: Bearer ${TOKEN}"
 ```
 
 ---
@@ -416,280 +414,102 @@ curl http://localhost:8080/v1/orders/<order-uuid>
 # gRPC API
 
 Адрес: `localhost:50051`  
-Reflection включён — удобно смотреть методы через `grpcurl` / Postman / BloomRPC.
-
-Контракты: `proto/catalog.proto`, `proto/cart.proto`, `proto/order.proto`.
-
-## Сервисы
-
-| Сервис                         | Пакет              | Описание        |
-|--------------------------------|--------------------|-----------------|
-| `CatalogService`               | `store.catalog.v1` | Каталог товаров |
-| `CartService`                  | `store.cart.v1`    | Корзина         |
-| `OrderService`                 | `store.order.v1`   | Заказы          |
-
----
-
-## 1. CatalogService (`store.catalog.v1.CatalogService`)
-
-### 1.1. ListProducts
-
-Список товаров.
-
-**Запрос `ListProductsRequest`:**
-
-| Поле         | Тип    | Описание                         |
-|--------------|--------|----------------------------------|
-| `page_size`  | int32  | Зарезервировано (не используется)|
-| `page_token` | string | Зарезервировано (не используется)|
-
-**Ответ `ListProductsResponse`:**
-
-| Поле              | Тип               | Описание                    |
-|-------------------|-------------------|-----------------------------|
-| `products`        | repeated Product  | Список товаров              |
-| `next_page_token` | string            | Пока всегда пустая строка   |
-
-**Модель `Product`:**
-
-| Поле             | Тип    | Описание                |
-|------------------|--------|-------------------------|
-| `id`             | string | ID товара               |
-| `name`           | string | Название                |
-| `description`    | string | Описание                |
-| `price_cents`    | int64  | Цена в центах           |
-| `stock_quantity` | int32  | Остаток на складе       |
-
-**Пример (grpcurl):**
-
-```bash
-grpcurl -plaintext localhost:50051 store.catalog.v1.CatalogService/ListProducts
-```
-
----
-
-### 1.2. GetProduct
-
-Получить товар по ID.
-
-**Запрос `GetProductRequest`:**
-
-| Поле         | Тип    | Обязательный | Описание  |
-|--------------|--------|--------------|-----------|
-| `product_id` | string | да           | ID товара |
-
-**Ответ `ProductResponse`:**
-
-| Поле      | Тип     | Описание |
-|-----------|---------|----------|
-| `product` | Product | Товар    |
-
-**Ошибки:** `InvalidArgument`, `NotFound`, `Internal`.
-
-**Пример:**
-
-```bash
-grpcurl -plaintext -d '{"product_id":"550e8400-e29b-41d4-a716-446655440001"}' \
-  localhost:50051 store.catalog.v1.CatalogService/GetProduct
-```
-
----
-
-## 2. CartService (`store.cart.v1.CartService`)
-
-### Общий ответ `CartResponse`
-
-| Поле                | Тип                 | Описание                    |
-|---------------------|---------------------|-----------------------------|
-| `items`             | repeated CartItem   | Позиции корзины             |
-| `total_price_cents` | int64               | Итоговая сумма в центах     |
-
-**Модель `CartItem`:**
-
-| Поле         | Тип    | Описание     |
-|--------------|--------|--------------|
-| `product_id` | string | ID товара    |
-| `quantity`   | int32  | Количество |
-
----
-
-### 2.1. GetCart
-
-**Запрос `GetCartRequest`:**
-
-| Поле      | Тип    | Обязательный |
-|-----------|--------|--------------|
-| `user_id` | string | да           |
-
-**Пример:**
-
-```bash
-grpcurl -plaintext -d '{"user_id":"user-1"}' \
-  localhost:50051 store.cart.v1.CartService/GetCart
-```
-
----
-
-### 2.2. AddItem
-
-**Запрос `AddItemRequest`:**
-
-| Поле         | Тип    | Обязательный | Описание        |
-|--------------|--------|--------------|-----------------|
-| `user_id`    | string | да           | ID пользователя |
-| `product_id` | string | да           | ID товара       |
-| `quantity`   | int32  | да           | 1–99            |
-
-**Ошибки:** `InvalidArgument`, `NotFound`, `Internal`.
-
-**Пример:**
-
-```bash
-grpcurl -plaintext -d '{"user_id":"user-1","product_id":"550e8400-e29b-41d4-a716-446655440001","quantity":1}' \
-  localhost:50051 store.cart.v1.CartService/AddItem
-```
-
----
-
-### 2.3. RemoveItem
-
-**Запрос `RemoveItemRequest`:**
-
-| Поле         | Тип    | Обязательный |
-|--------------|--------|--------------|
-| `user_id`    | string | да           |
-| `product_id` | string | да           |
-
-**Ошибки:** `InvalidArgument`, `Internal` (если товара нет в корзине).
-
-**Пример:**
-
-```bash
-grpcurl -plaintext -d '{"user_id":"user-1","product_id":"550e8400-e29b-41d4-a716-446655440001"}' \
-  localhost:50051 store.cart.v1.CartService/RemoveItem
-```
-
----
-
-### 2.4. ClearCart
-
-**Запрос `ClearCartRequest`:**
-
-| Поле      | Тип    | Обязательный |
-|-----------|--------|--------------|
-| `user_id` | string | да           |
-
-**Пример:**
-
-```bash
-grpcurl -plaintext -d '{"user_id":"user-1"}' \
-  localhost:50051 store.cart.v1.CartService/ClearCart
-```
-
----
-
-## 3. OrderService (`store.order.v1.OrderService`)
-
-### Модель `Order`
-
-| Поле                 | Тип                 | Описание                    |
-|----------------------|---------------------|-----------------------------|
-| `id`                 | string              | ID заказа (`UUID`)|
-| `user_id`            | string              | ID пользователя             |
-| `items`              | repeated OrderItem  | Позиции заказа              |
-| `total_amount_cents` | int64               | Сумма заказа в центах       |
-| `status`             | OrderStatus         | Статус                      |
-
-**Модель `OrderItem`:**
-
-| Поле          | Тип    | Описание                          |
-|---------------|--------|-----------------------------------|
-| `product_id`  | string | ID товара                         |
-| `quantity`    | int32  | Количество                       |
-| `price_cents` | int64  | Цена на момент оформления заказа  |
-
-**Enum `OrderStatus`:**
-
-| Имя                        | Значение | Описание               |
-|----------------------------|----------|------------------------|
-| `ORDER_STATUS_UNSPECIFIED` | 0        | Не задан               |
-| `ORDER_STATUS_CREATED`     | 1        | Создан, ожидает оплаты |
-| `ORDER_STATUS_PAID`        | 2        | Оплачен                |
-| `ORDER_STATUS_SHIPPED`     | 3        | Отправлен              |
-| `ORDER_STATUS_CANCELLED`   | 4        | Отменён                |
-
----
-
-### 3.1. CreateOrder
-
-Создаёт заказ из корзины пользователя и очищает корзину.
-
-**Запрос `CreateOrderRequest`:**
-
-| Поле      | Тип    | Обязательный |
-|-----------|--------|--------------|
-| `user_id` | string | да           |
-
-**Ответ `OrderResponse`:**
-
-| Поле    | Тип   | Описание |
-|---------|-------|----------|
-| `order` | Order | Заказ    |
-
-**Ошибки:** `InvalidArgument`, `FailedPrecondition`, `Internal`.
-
-**Пример:**
-
-```bash
-grpcurl -plaintext -d '{"user_id":"user-1"}' \
-  localhost:50051 store.order.v1.OrderService/CreateOrder
-```
-
----
-
-### 3.2. GetOrder
-
-**Запрос `GetOrderRequest`:**
-
-| Поле       | Тип    | Обязательный |
-|------------|--------|--------------|
-| `order_id` | string | да           |
-
-**Ошибки:** `InvalidArgument`, `NotFound`.
-
-**Пример:**
-
-```bash
-grpcurl -plaintext -d '{"order_id":"a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"}' \
-  localhost:50051 store.order.v1.OrderService/GetOrder
-```
+Reflection включён. Контракты: `proto/*.proto`.
+
+| Сервис | Пакет | Описание |
+|--------|-------|----------|
+| `UserService` | `store.user.v1` | Пользователи |
+| `CatalogService` | `store.catalog.v1` | Каталог |
+| `CartService` | `store.cart.v1` | Корзина |
+| `OrderService` | `store.order.v1` | Заказы |
+| `PromoService` | `store.promo.v1` | Admin-промокоды |
+
+Для Cart / Order / Promo передавайте metadata: `authorization: Bearer <token>`.
+
+### Product
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | string | ID |
+| `name` | string | Название |
+| `description` | string | Описание |
+| `price_cents` | int64 | Цена |
+| `stock_quantity` | int32 | Остаток |
+| `brand` | string | Бренд |
+
+### CartResponse
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `items` | repeated CartItem | Позиции |
+| `total_price_cents` | int64 | Итого |
+| `subtotal_cents` | int64 | До скидок |
+| `discount_cents` | int64 | Скидка |
+| `applied_promocode` | string | Код |
+| `combo_discount_applied` | bool | Combo |
+| `expires_at` | string | TTL (RFC3339) |
+
+### OrderStatus
+
+| Имя | Значение |
+|-----|----------|
+| `ORDER_STATUS_CREATED` | 1 |
+| `ORDER_STATUS_PAID` | 2 |
+| `ORDER_STATUS_SHIPPED` | 3 |
+| `ORDER_STATUS_CANCELLED` | 4 |
+| `ORDER_STATUS_COMPLETED` | 5 |
+
+### CartService (дополнительно)
+
+- `ApplyPromocode` — `user_id`, `code`
+- `ClearPromocode` — `user_id`
+
+### OrderService (дополнительно)
+
+- `CancelOrder` — `order_id`
+- `UpdateOrderStatus` — `order_id`, `from_status`, `to_status`
+
+### PromoService
+
+- `CreatePromocode` / `ListPromocodes` / `UpdatePromocode` / `DeletePromocode`
 
 ---
 
 ## Соответствие REST ↔ gRPC
 
-| REST                                      | gRPC-метод                              |
-|-------------------------------------------|-----------------------------------------|
-| `GET /v1/products`                        | `CatalogService.ListProducts`           |
-| `GET /v1/products/{product_id}`           | `CatalogService.GetProduct`             |
-| `GET /v1/users/{user_id}/cart`            | `CartService.GetCart`                   |
-| `POST /v1/users/{user_id}/cart/items`     | `CartService.AddItem`                   |
-| `DELETE /v1/users/{user_id}/cart/items/{product_id}` | `CartService.RemoveItem`     |
-| `DELETE /v1/users/{user_id}/cart`         | `CartService.ClearCart`                 |
-| `POST /v1/orders`                         | `OrderService.CreateOrder`              |
-| `GET /v1/orders/{order_id}`               | `OrderService.GetOrder`                 |
+| REST | gRPC |
+|------|------|
+| `POST /v1/users/register` | `UserService.Register` |
+| `POST /v1/users/login` | `UserService.Login` |
+| `GET /v1/users/{user_id}` | `UserService.GetUser` |
+| `GET /v1/products` | `CatalogService.ListProducts` |
+| `GET /v1/products/{product_id}` | `CatalogService.GetProduct` |
+| `GET /v1/users/{user_id}/cart` | `CartService.GetCart` |
+| `POST /v1/users/{user_id}/cart/items` | `CartService.AddItem` |
+| `DELETE /v1/users/{user_id}/cart/items/{product_id}` | `CartService.RemoveItem` |
+| `DELETE /v1/users/{user_id}/cart` | `CartService.ClearCart` |
+| `POST /v1/users/{user_id}/cart/promocode` | `CartService.ApplyPromocode` |
+| `DELETE /v1/users/{user_id}/cart/promocode` | `CartService.ClearPromocode` |
+| `POST /v1/orders` | `OrderService.CreateOrder` |
+| `GET /v1/orders/{order_id}` | `OrderService.GetOrder` |
+| `POST /v1/orders/{order_id}/cancel` | `OrderService.CancelOrder` |
+| `POST /v1/orders/{order_id}/status` | `OrderService.UpdateOrderStatus` |
+| `GET /v1/admin/promocodes` | `PromoService.ListPromocodes` |
+| `POST /v1/admin/promocodes` | `PromoService.CreatePromocode` |
+| `PATCH /v1/admin/promocodes/{code}` | `PromoService.UpdatePromocode` |
+| `DELETE /v1/admin/promocodes/{code}` | `PromoService.DeletePromocode` |
 
 ---
 
 ## Полезные команды grpcurl
 
 ```bash
-# Список сервисов
 grpcurl -plaintext localhost:50051 list
 
-# Описание методов сервиса
 grpcurl -plaintext localhost:50051 describe store.cart.v1.CartService
 
-# Описание сообщения
-grpcurl -plaintext localhost:50051 describe store.order.v1.Order
+grpcurl -plaintext \
+  -H 'authorization: Bearer <token>' \
+  -d '{"user_id":"<uuid>"}' \
+  localhost:50051 store.cart.v1.CartService/GetCart
 ```

@@ -1,0 +1,81 @@
+syntax = "proto3";
+
+package store.promo.v1;
+
+option go_package = "store/api/promo/v1;promo";
+
+import "google/api/annotations.proto";
+
+service PromoService {
+  rpc CreatePromocode (CreatePromocodeRequest) returns (PromocodeResponse) {
+    option (google.api.http) = {
+      post: "/v1/admin/promocodes"
+      body: "*"
+    };
+  }
+
+  rpc ListPromocodes (ListPromocodesRequest) returns (ListPromocodesResponse) {
+    option (google.api.http) = {
+      get: "/v1/admin/promocodes"
+    };
+  }
+
+  rpc UpdatePromocode (UpdatePromocodeRequest) returns (PromocodeResponse) {
+    option (google.api.http) = {
+      patch: "/v1/admin/promocodes/{code}"
+      body: "*"
+    };
+  }
+
+  rpc DeletePromocode (DeletePromocodeRequest) returns (DeletePromocodeResponse) {
+    option (google.api.http) = {
+      delete: "/v1/admin/promocodes/{code}"
+    };
+  }
+}
+
+enum DiscountType {
+  DISCOUNT_TYPE_UNSPECIFIED = 0;
+  DISCOUNT_TYPE_PERCENT = 1;
+  DISCOUNT_TYPE_FIXED_CENTS = 2;
+}
+
+message Promocode {
+  string code = 1;
+  DiscountType discount_type = 2;
+  int64 discount_value = 3;
+  bool active = 4;
+  string expires_at = 5;
+}
+
+message CreatePromocodeRequest {
+  string code = 1;
+  DiscountType discount_type = 2;
+  int64 discount_value = 3;
+  bool active = 4;
+  string expires_at = 5;
+}
+
+message UpdatePromocodeRequest {
+  string code = 1;
+  DiscountType discount_type = 2;
+  int64 discount_value = 3;
+  bool active = 4;
+  string expires_at = 5;
+}
+
+message DeletePromocodeRequest {
+  string code = 1;
+}
+
+message ListPromocodesRequest {}
+
+message PromocodeResponse {
+  Promocode promocode = 1;
+}
+
+message ListPromocodesResponse {
+  repeated Promocode promocodes = 1;
+}
+
+message DeletePromocodeResponse {}

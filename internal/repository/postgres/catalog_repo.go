@@ -19,7 +19,7 @@ func NewCatalogRepository(db *sql.DB) *CatalogRepository {
 
 func (r *CatalogRepository) GetProduct(id string) (repository.Product, error) {
 	const q = `
-		SELECT id, name, description, price_cents, stock_quantity
+		SELECT id, name, description, price_cents, stock_quantity, brand
 		FROM products
 		WHERE id = $1
 	`
@@ -31,6 +31,7 @@ func (r *CatalogRepository) GetProduct(id string) (repository.Product, error) {
 		&p.Description,
 		&p.PriceCents,
 		&p.StockQuantity,
+		&p.Brand,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return repository.Product{}, repository.ErrNotFound
@@ -43,7 +44,7 @@ func (r *CatalogRepository) GetProduct(id string) (repository.Product, error) {
 
 func (r *CatalogRepository) ListProducts() ([]repository.Product, error) {
 	const q = `
-		SELECT id, name, description, price_cents, stock_quantity
+		SELECT id, name, description, price_cents, stock_quantity, brand
 		FROM products
 		ORDER BY id
 	`
@@ -57,7 +58,7 @@ func (r *CatalogRepository) ListProducts() ([]repository.Product, error) {
 	products := make([]repository.Product, 0)
 	for rows.Next() {
 		var p repository.Product
-		if err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.PriceCents, &p.StockQuantity); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.PriceCents, &p.StockQuantity, &p.Brand); err != nil {
 			return nil, fmt.Errorf("scan product: %w", err)
 		}
 		products = append(products, p)

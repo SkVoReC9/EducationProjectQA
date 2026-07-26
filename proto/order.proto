@@ -7,34 +7,47 @@ option go_package = "store/api/order/v1;order";
 import "google/api/annotations.proto";
 
 service OrderService {
-  // Конвертирует текущую корзину пользователя в заказ
   rpc CreateOrder (CreateOrderRequest) returns (OrderResponse) {
     option (google.api.http) = {
       post: "/v1/orders"
       body: "*"
     };
   }
-  // Проверить статус существующего заказа
+
   rpc GetOrder (GetOrderRequest) returns (OrderResponse) {
     option (google.api.http) = {
       get: "/v1/orders/{order_id}"
     };
   }
+
+  rpc CancelOrder (CancelOrderRequest) returns (OrderResponse) {
+    option (google.api.http) = {
+      post: "/v1/orders/{order_id}/cancel"
+      body: "*"
+    };
+  }
+
+  rpc UpdateOrderStatus (UpdateOrderStatusRequest) returns (OrderResponse) {
+    option (google.api.http) = {
+      post: "/v1/orders/{order_id}/status"
+      body: "*"
+    };
+  }
 }
 
-// Статусы заказа описываем через Enum
 enum OrderStatus {
   ORDER_STATUS_UNSPECIFIED = 0;
-  ORDER_STATUS_CREATED = 1;    // Создан, ожидает оплаты
-  ORDER_STATUS_PAID = 2;       // Оплачен
-  ORDER_STATUS_SHIPPED = 3;    // Отправлен
-  ORDER_STATUS_CANCELLED = 4;  // Отменен
+  ORDER_STATUS_CREATED = 1;
+  ORDER_STATUS_PAID = 2;
+  ORDER_STATUS_SHIPPED = 3;
+  ORDER_STATUS_CANCELLED = 4;
+  ORDER_STATUS_COMPLETED = 5;
 }
 
 message OrderItem {
   string product_id = 1;
   int32 quantity = 2;
-  int64 price_cents = 3; // Цена фиксации на момент покупки
+  int64 price_cents = 3;
 }
 
 message Order {
@@ -47,11 +60,20 @@ message Order {
 
 message CreateOrderRequest {
   string user_id = 1;
-  // Адрес доставки, способ оплаты и прочее можно добавить сюда
 }
 
 message GetOrderRequest {
   string order_id = 1;
+}
+
+message CancelOrderRequest {
+  string order_id = 1;
+}
+
+message UpdateOrderStatusRequest {
+  string order_id = 1;
+  OrderStatus from_status = 2;
+  OrderStatus to_status = 3;
 }
 
 message OrderResponse {

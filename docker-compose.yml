@@ -24,6 +24,7 @@ services:
       - "8080:8080"   # HTTP JSON gateway
     environment:
       DATABASE_URL: postgres://store:store@postgres:5432/store?sslmode=disable
+      JWT_SECRET: dev-secret-change-me
     depends_on:
       postgres:
         condition: service_healthy

@@ -30,6 +30,7 @@ message Product {
   string description = 3;
   int64 price_cents = 4; // Цена в минимальных единицах
   int32 stock_quantity = 5; // Остаток на складе
+  string brand = 6;
 }
 
 message GetProductRequest {
