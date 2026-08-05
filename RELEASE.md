@@ -11,6 +11,32 @@ API reference: [`Docs.MD`](Docs.MD) · Project overview: [`README.md`](README.md
 
 ---
 
+## Release 0.5.1 — 2026-08-05
+
+**Theme:** Hard delete order + Docker protobuf codegen
+
+### Added
+
+- **`DELETE /v1/orders/{order_id}`** (`OrderService.DeleteOrder`) — hard delete (order + items) for **any** status; JWT required; owner or admin
+- Distinct from soft cancel (`POST /v1/orders/{order_id}/cancel`, only from `CREATED`)
+
+### Changed
+
+- **Dockerfile** installs `protoc` (Alpine `protobuf` + `protobuf-dev` for well-known types), `make`, and Go plugins (`protoc-gen-go`, `protoc-gen-go-grpc`, `protoc-gen-grpc-gateway`); runs `make generate` before `go build`
+- [`Docs.MD`](Docs.MD) and [`README.md`](README.md) document DeleteOrder and Docker codegen
+
+### Migrations
+
+- None
+
+### Breaking / QA impact
+
+- New protected endpoint: `DELETE /v1/orders/{order_id}`
+- Cover delete for `CREATED` / `PAID` / `SHIPPED` / `CANCELLED` / `COMPLETED`; wrong owner → 403; missing → 404
+- Docker rebuild no longer depends on a pre-generated local `gen/` tree
+
+---
+
 ## Release 0.5.0 — 2026-08-05
 
 **Theme:** Delete user account

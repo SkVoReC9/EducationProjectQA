@@ -33,6 +33,12 @@ service OrderService {
       body: "*"
     };
   }
+
+  rpc DeleteOrder (DeleteOrderRequest) returns (DeleteOrderResponse) {
+    option (google.api.http) = {
+      delete: "/v1/orders/{order_id}"
+    };
+  }
 }
 
 enum OrderStatus {
@@ -70,6 +76,10 @@ message CancelOrderRequest {
   string order_id = 1;
 }
 
+message DeleteOrderRequest {
+  string order_id = 1;
+}
+
 message UpdateOrderStatusRequest {
   string order_id = 1;
   OrderStatus from_status = 2;
@@ -79,3 +89,5 @@ message UpdateOrderStatusRequest {
 message OrderResponse {
   Order order = 1;
 }
+
+message DeleteOrderResponse {}

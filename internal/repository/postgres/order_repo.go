@@ -148,3 +148,18 @@ func (r *OrderRepository) UpdateOrderStatus(orderID string, fromStatus, toStatus
 	order.Items = items
 	return order, nil
 }
+
+func (r *OrderRepository) DeleteOrder(orderID string) error {
+	res, err := r.db.ExecContext(context.Background(), `DELETE FROM orders WHERE id = $1`, orderID)
+	if err != nil {
+		return fmt.Errorf("delete order: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return repository.ErrOrderNotFound
+	}
+	return nil
+}

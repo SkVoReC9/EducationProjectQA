@@ -93,6 +93,17 @@ func (h *OrderHandler) CancelOrder(ctx context.Context, req *pb.CancelOrderReque
 	return &pb.OrderResponse{Order: mapOrderToProto(order)}, nil
 }
 
+func (h *OrderHandler) DeleteOrder(ctx context.Context, req *pb.DeleteOrderRequest) (*pb.DeleteOrderResponse, error) {
+	if req.GetOrderId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "order_id обязателен")
+	}
+
+	if err := h.svc.DeleteOrder(req.GetOrderId(), auth.UserIDFromContext(ctx), callerIsAdmin(ctx)); err != nil {
+		return nil, mapOrderErr(err)
+	}
+	return &pb.DeleteOrderResponse{}, nil
+}
+
 func (h *OrderHandler) UpdateOrderStatus(ctx context.Context, req *pb.UpdateOrderStatusRequest) (*pb.OrderResponse, error) {
 	if req.GetOrderId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "order_id обязателен")

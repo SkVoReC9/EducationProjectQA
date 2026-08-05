@@ -13,7 +13,7 @@ gRPC store backend with a JSON HTTP gateway. Catalog, cart, order, user, and adm
 - **Users** — register, login (JWT + role), get user by ID
 - **Catalog** — list and fetch products with `brand` (public)
 - **Cart** — add/remove items, get/clear cart, apply/clear promocode, 30m TTL (**JWT required**)
-- **Orders** — create from cart, get, cancel, update status; auto `PAID`→`SHIPPED`→`COMPLETED` (**JWT required**)
+- **Orders** — create from cart, get, cancel, update status, **hard delete** (any status); auto `PAID`→`SHIPPED`→`COMPLETED` (**JWT required**)
 - **Admin promocodes** — CRUD under `/v1/admin/promocodes` (**admin JWT**)
 - **Dual transport** — native gRPC (`:50051`) and REST/JSON via grpc-gateway (`:8080`)
 - **PostgreSQL** — persistent storage via `pgx` + `database/sql`
@@ -160,10 +160,11 @@ Apply promocode:
 ### Orders (JWT)
 
 ```http
-POST /v1/orders
-GET  /v1/orders/{order_id}
-POST /v1/orders/{order_id}/cancel
-POST /v1/orders/{order_id}/status
+POST   /v1/orders
+GET    /v1/orders/{order_id}
+POST   /v1/orders/{order_id}/cancel
+POST   /v1/orders/{order_id}/status
+DELETE /v1/orders/{order_id}
 ```
 
 Create:
@@ -264,6 +265,8 @@ Connect to `localhost:50051`. Contracts live in `proto/`.
 ```bash
 make generate
 ```
+
+Docker image builds run `make generate` in the builder stage (protoc + plugins installed there), so a clean clone does not need a local `gen/` directory.
 
 ## Ports
 

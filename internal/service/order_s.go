@@ -30,6 +30,7 @@ type OrderRepository interface {
 	CreateOrder(order repository.Order) (repository.Order, error)
 	GetOrder(orderID string) (repository.Order, error)
 	UpdateOrderStatus(orderID string, fromStatus, toStatus int32) (repository.Order, error)
+	DeleteOrder(orderID string) error
 }
 
 type CartProvider interface {
@@ -126,6 +127,20 @@ func (s *OrderService) CancelOrder(orderID string, callerID string, isAdmin bool
 		return repository.Order{}, ErrInvalidTransition
 	}
 	return s.repo.UpdateOrderStatus(orderID, OrderStatusCreated, OrderStatusCancelled)
+}
+
+func (s *OrderService) DeleteOrder(orderID string, callerID string, isAdmin bool) error {
+	if orderID == "" {
+		return errors.New("order_id не может быть пустым")
+	}
+	order, err := s.repo.GetOrder(orderID)
+	if err != nil {
+		return err
+	}
+	if !isAdmin && order.UserID != callerID {
+		return ErrPermissionDenied
+	}
+	return s.repo.DeleteOrder(orderID)
 }
 
 func (s *OrderService) UpdateOrderStatus(orderID string, fromStatus, toStatus int32, callerID string, isAdmin bool) (repository.Order, error) {

@@ -342,6 +342,14 @@ POST /v1/orders/{order_id}/status
 }
 ```
 
+### 3.5. Удалить заказ
+
+```http
+DELETE /v1/orders/{order_id}
+```
+
+Жёсткое удаление (строка + `order_items`). Любой статус. Владелец или admin. Отличается от soft-cancel (`POST .../cancel`).
+
 ---
 
 ## 4. Admin-промокоды (JWT admin)
@@ -481,6 +489,7 @@ Reflection включён. Контракты: `proto/*.proto`.
 
 - `CancelOrder` — `order_id`
 - `UpdateOrderStatus` — `order_id`, `from_status`, `to_status`
+- `DeleteOrder` — `order_id` (hard delete, любой статус)
 
 ### PromoService
 
@@ -508,6 +517,7 @@ Reflection включён. Контракты: `proto/*.proto`.
 | `GET /v1/orders/{order_id}` | `OrderService.GetOrder` |
 | `POST /v1/orders/{order_id}/cancel` | `OrderService.CancelOrder` |
 | `POST /v1/orders/{order_id}/status` | `OrderService.UpdateOrderStatus` |
+| `DELETE /v1/orders/{order_id}` | `OrderService.DeleteOrder` |
 | `GET /v1/admin/promocodes` | `PromoService.ListPromocodes` |
 | `POST /v1/admin/promocodes` | `PromoService.CreatePromocode` |
 | `PATCH /v1/admin/promocodes/{code}` | `PromoService.UpdatePromocode` |
