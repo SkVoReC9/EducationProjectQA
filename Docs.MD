@@ -136,6 +136,17 @@ POST /v1/users/login
 GET /v1/users/{user_id}
 ```
 
+### 0.4. Удалить пользователя
+
+```http
+DELETE /v1/users/{user_id}
+Authorization: Bearer <access_token>
+```
+
+Требуется JWT; `user_id` в пути должен совпадать с `sub` токена.
+Заказы в `COMPLETED` / `CANCELLED` удаляются вместе с пользователем.
+Если есть активные заказы (`CREATED` / `PAID` / `SHIPPED`) → **FailedPrecondition**.
+
 ---
 
 ## 1. Каталог
@@ -484,6 +495,7 @@ Reflection включён. Контракты: `proto/*.proto`.
 | `POST /v1/users/register` | `UserService.Register` |
 | `POST /v1/users/login` | `UserService.Login` |
 | `GET /v1/users/{user_id}` | `UserService.GetUser` |
+| `DELETE /v1/users/{user_id}` | `UserService.DeleteUser` |
 | `GET /v1/products` | `CatalogService.ListProducts` |
 | `GET /v1/products/{product_id}` | `CatalogService.GetProduct` |
 | `GET /v1/users/{user_id}/cart` | `CartService.GetCart` |

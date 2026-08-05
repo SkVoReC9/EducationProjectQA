@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"awesomeProject/internal/repository"
 )
@@ -85,4 +86,56 @@ func (r *UserRepository) GetUserByEmail(email string) (repository.User, error) {
 		return repository.User{}, fmt.Errorf("get user by email: %w", err)
 	}
 	return user, nil
+}
+
+func (r *UserRepository) DeleteUser(id string) error {
+	ctx := context.Background()
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin delete user: %w", err)
+	}
+	defer tx.Rollback()
+
+	var activeCount int
+	err = tx.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM orders
+		WHERE user_id = $1
+		  AND status NOT IN ($2, $3)
+	`, id, repository.OrderStatusCancelled, repository.OrderStatusCompleted).Scan(&activeCount)
+	if err != nil {
+		return fmt.Errorf("count active orders: %w", err)
+	}
+	if activeCount > 0 {
+		return repository.ErrUserHasActiveOrders
+	}
+
+	// order_items cascade on order delete
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM orders
+		WHERE user_id = $1
+		  AND status IN ($2, $3)
+	`, id, repository.OrderStatusCancelled, repository.OrderStatusCompleted); err != nil {
+		return fmt.Errorf("delete terminal orders: %w", err)
+	}
+
+	res, err := tx.ExecContext(ctx, `DELETE FROM users WHERE id = $1`, id)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+			return repository.ErrUserHasActiveOrders
+		}
+		return fmt.Errorf("delete user: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return repository.ErrUserNotFound
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit delete user: %w", err)
+	}
+	return nil
 }

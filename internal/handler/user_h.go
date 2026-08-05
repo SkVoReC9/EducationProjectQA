@@ -90,6 +90,29 @@ func (h *UserHandler) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.
 	return &pb.UserResponse{User: mapUserToProto(user)}, nil
 }
 
+func (h *UserHandler) DeleteUser(ctx context.Context, req *pb.DeleteUserRequest) (*pb.DeleteUserResponse, error) {
+	if req.GetUserId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "user_id обязателен")
+	}
+	if err := ensureCallerMatchesUser(ctx, req.GetUserId()); err != nil {
+		return nil, err
+	}
+
+	if err := h.svc.DeleteUser(req.GetUserId()); err != nil {
+		if errors.Is(err, repository.ErrUserNotFound) {
+			return nil, status.Error(codes.NotFound, "пользователь не найден")
+		}
+		if errors.Is(err, repository.ErrUserHasActiveOrders) {
+			return nil, status.Error(codes.FailedPrecondition, "нельзя удалить пользователя с активными заказами")
+		}
+		if err.Error() == "user_id обязателен" {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+		return nil, status.Errorf(codes.Internal, "ошибка удаления пользователя: %v", err)
+	}
+	return &pb.DeleteUserResponse{}, nil
+}
+
 func ensureCallerMatchesUser(ctx context.Context, userID string) error {
 	caller := auth.UserIDFromContext(ctx)
 	if caller == "" {

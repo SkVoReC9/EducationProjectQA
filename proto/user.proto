@@ -27,6 +27,12 @@ service UserService {
       get: "/v1/users/{user_id}"
     };
   }
+
+  rpc DeleteUser (DeleteUserRequest) returns (DeleteUserResponse) {
+    option (google.api.http) = {
+      delete: "/v1/users/{user_id}"
+    };
+  }
 }
 
 message User {
@@ -52,6 +58,10 @@ message GetUserRequest {
   string user_id = 1;
 }
 
+message DeleteUserRequest {
+  string user_id = 1;
+}
+
 message AuthResponse {
   User user = 1;
   string access_token = 2;
@@ -60,3 +70,5 @@ message AuthResponse {
 message UserResponse {
   User user = 1;
 }
+
+message DeleteUserResponse {}

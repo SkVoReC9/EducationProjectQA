@@ -20,6 +20,7 @@ type UserRepository interface {
 	CreateUser(user repository.User) (repository.User, error)
 	GetUser(id string) (repository.User, error)
 	GetUserByEmail(email string) (repository.User, error)
+	DeleteUser(id string) error
 }
 
 type UserService struct {
@@ -99,4 +100,15 @@ func (s *UserService) GetUser(userID string) (repository.User, error) {
 		return repository.User{}, errors.New("user_id не может быть пустым")
 	}
 	return s.repo.GetUser(userID)
+}
+
+func (s *UserService) DeleteUser(userID string) error {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return errors.New("user_id обязателен")
+	}
+	if err := s.repo.DeleteUser(userID); err != nil {
+		return err
+	}
+	return nil
 }

@@ -70,7 +70,8 @@ func UnaryInterceptor(jwt *Manager) grpc.UnaryServerInterceptor {
 func requiresAuth(fullMethod string) bool {
 	return strings.Contains(fullMethod, "CartService") ||
 		strings.Contains(fullMethod, "OrderService") ||
-		strings.Contains(fullMethod, "PromoService")
+		strings.Contains(fullMethod, "PromoService") ||
+		strings.HasSuffix(fullMethod, "/DeleteUser")
 }
 
 func requiresAdmin(fullMethod string) bool {

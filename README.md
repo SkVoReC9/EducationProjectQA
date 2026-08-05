@@ -84,10 +84,11 @@ Full UUID prefix: `550e8400-e29b-41d4-a716-44665544` + `0001`…`0050`.
 ## Auth
 
 - **Public:** Catalog, `POST /v1/users/register`, `POST /v1/users/login`, `GET /v1/users/{user_id}`
-- **Protected:** Cart, Order — `Authorization: Bearer <access_token>`
+- **Protected:** Cart, Order, `DELETE /v1/users/{user_id}` — `Authorization: Bearer <access_token>`
 - **Admin:** Promo CRUD — JWT with `role=admin`
 - Access token TTL: **24h** (HS256, `JWT_SECRET`); claims include `role`
 - Path/body `user_id` on cart/order must match JWT `sub` (unless admin where noted)
+- `DELETE /v1/users/{user_id}` removes terminal orders (`COMPLETED` / `CANCELLED`); blocked if any active order remains
 - Seeded admin: `admin@store.local` / `admin123`
 
 ## Pricing rules (cart)
@@ -120,9 +121,10 @@ Base URL: `http://localhost:8080`
 ### Users
 
 ```http
-POST /v1/users/register
-POST /v1/users/login
-GET  /v1/users/{user_id}
+POST   /v1/users/register
+POST   /v1/users/login
+GET    /v1/users/{user_id}
+DELETE /v1/users/{user_id}
 ```
 
 ### Catalog

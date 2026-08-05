@@ -7,8 +7,15 @@ import (
 
 var ErrNotFound = errors.New("product not found")
 var ErrUserNotFound = errors.New("user not found")
+var ErrUserHasActiveOrders = errors.New("user has active orders")
 var ErrPromocodeNotFound = errors.New("promocode not found")
 var ErrOrderNotFound = errors.New("order not found")
+
+// Terminal order statuses: user may be deleted once only these remain.
+const (
+	OrderStatusCancelled int32 = 4
+	OrderStatusCompleted int32 = 5
+)
 
 type User struct {
 	ID           string
