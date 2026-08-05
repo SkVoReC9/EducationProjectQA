@@ -11,6 +11,32 @@ API reference: [`Docs.MD`](Docs.MD) · Project overview: [`README.md`](README.md
 
 ---
 
+## Release 0.5.0 — 2026-08-05
+
+**Theme:** Delete user account
+
+### Added
+
+- **`DELETE /v1/users/{user_id}`** (`UserService.DeleteUser`) — JWT required; path `user_id` must match token `sub`
+- Deletion allowed when the user has no orders, or only terminal orders (`COMPLETED` / `CANCELLED`); those orders (and items) are removed with the user
+- Blocked with **FailedPrecondition** if any active order remains (`CREATED` / `PAID` / `SHIPPED`)
+
+### Changed
+
+- Auth interceptor requires JWT for `DeleteUser` only; Register / Login / GetUser stay public
+- [`Docs.MD`](Docs.MD) and [`README.md`](README.md) document the new endpoint and rules
+
+### Migrations
+
+- None (uses existing `orders` FK `ON DELETE RESTRICT`; terminal orders are deleted in-app before the user row)
+
+### Breaking / QA impact
+
+- New protected endpoint for regression: `DELETE /v1/users/{user_id}`
+- Cover cases: no orders → 200; only completed/cancelled → 200 + orders gone; active order → FailedPrecondition; wrong/missing token → 401/403
+
+---
+
 ## Release 0.4.0 — 2026-07-26
 
 **Theme:** Cart pricing, order lifecycle, admin promocodes
