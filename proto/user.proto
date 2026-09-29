@@ -15,6 +15,14 @@ service UserService {
     };
   }
 
+
+rpc RefreshToken (RefreshTokenRequest) returns (AuthResponse) {
+    option (google.api.http) = {
+      post: "/v1/users/refresh-token"
+      body: "*"
+    };
+  }
+
   rpc Login (LoginRequest) returns (AuthResponse) {
     option (google.api.http) = {
       post: "/v1/users/login"
